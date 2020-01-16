@@ -42,30 +42,229 @@ extern "C"
 {
 #endif
 
+/**
+ * Call back handlers that are invoked in response to oc_main_init()
+ *
+ * @see oc_main_init
+ */
 typedef struct
 {
+  /**
+   * Device initialization callback that is invoked to initialize the platform
+   * and device(s).
+   *
+   * At a minimum the platform should be initialized and at least one device
+   * added.
+   *
+   *  - oc_init_platform()
+   *  - oc_add_device()
+   *
+   * Multiple devices can be added by making multiple calls to oc_add_device().
+   *
+   * Other actions may be taken in the init handler
+   *  - The immutable device identifier can be set `piid`
+   *    (a.k.a Protocol Independent ID) oc_set_immutable_device_identifier()
+   *  - Set introspection data oc_set_introspection_data()
+   *  - Set up an interrupt handler oc_activate_interrupt_handler()
+   *  - Initialize application specific variables
+   *
+   * @return
+   *  - 0 to indicate success initializing the application
+   *  - value less than zero to indicate failure initializing the application
+   *
+   * @see oc_activate_interrupt_handler
+   * @see oc_add_device
+   * @see oc_init_platform
+   * @see oc_set_immutable_device_identifier
+   * @see oc_set_introspection_data
+   */
   int (*init)(void);
   void (*signal_event_loop)(void);
 
 #ifdef OC_SERVER
+  /**
+   * Resource registration callback.
+   *
+   * Callback is invoked after the device initialization callback.
+   *
+   * Use this callback to add resources to the devices added during the device
+   * initialization.  This where the properties and callbacks associated with
+   * the resources are typically done.
+   *
+   * Note: Callback is only invoked when OC_SERVER macro is defined.
+   *
+   * Example:
+   * ```
+   * static void register_resources(void)
+   * {
+   *   oc_resource_t *bswitch = oc_new_resource(NULL, "/switch", 1, 0);
+   *   oc_resource_bind_resource_type(bswitch, "oic.r.switch.binary");
+   *   oc_resource_bind_resource_interface(bswitch, OC_IF_A);
+   *   oc_resource_set_default_interface(bswitch, OC_IF_A);
+   *   oc_resource_set_discoverable(bswitch, true);
+   *   oc_resource_set_request_handler(bswitch, OC_GET, get_switch, NULL);
+   *   oc_resource_set_request_handler(bswitch, OC_PUT, put_switch, NULL);
+   *   oc_resource_set_request_handler(bswitch, OC_POST, post_switch, NULL);
+   *   oc_add_resource(bswitch);
+   * }
+   * ```
+   *
+   * @see init
+   * @see oc_new_resource
+   * @see oc_resource_bind_resource_interface
+   * @see oc_resource_set_default_interface
+   * @see oc_resource_bind_resource_type
+   * @see oc_resource_make_public
+   * @see oc_resource_set_discoverable
+   * @see oc_resource_set_observable
+   * @see oc_resource_set_periodic_observable
+   * @see oc_resource_set_properties_cbs
+   * @see oc_resource_set_request_handler
+   * @see oc_add_resource
+   */
   void (*register_resources)(void);
 #endif /* OC_SERVER */
 
 #ifdef OC_CLIENT
+  /**
+   * Callback invoked when the stack is ready to issue discovery requests.
+   *
+   * Callback is invoked after the device initialization callback.
+   *
+   * Example:
+   * ```
+   * static void issue_requests(void)
+   * {
+   *   oc_do_ip_discovery("oic.r.switch.binary", &discovery, NULL);
+   * }
+   * ```
+   *
+   * @see init
+   * @see oc_do_ip_discovery
+   * @see oc_do_ip_discovery_at_endpoint
+   * @see oc_do_site_local_ipv6_discovery
+   * @see oc_do_realm_local_ipv6_discovery
+   */
   void (*requests_entry)(void);
 #endif /* OC_CLIENT */
 } oc_handler_t;
 
 typedef void (*oc_init_platform_cb_t)(void *data);
+/**
+ * Callback invoked during oc_add_device(). The purpose is to add any additional
+ * device properties that are not supplied to oc_add_device() function call.
+ *
+ * Example:
+ * ```
+ * static void set_device_custom_property(void *data)
+ * {
+ *   (void)data;
+ *   oc_set_custom_device_property(purpose, "desk lamp");
+ * }
+ *
+ * static int app_init(void)
+ * {
+ *   int ret = oc_init_platform("My Platform", NULL, NULL);
+ *   ret |= oc_add_device("/oic/d", "oic.d.light", "My light", "ocf.1.0.0",
+ *                        "ocf.res.1.0.0", set_device_custom_property, NULL);
+ *   return ret;
+ * }
+ * ```
+ *
+ * @param data context pointer that comes from the oc_add_device() function
+ *
+ * @see oc_add_device
+ * @see oc_set_custom_device_property
+ */
 typedef void (*oc_add_device_cb_t)(void *data);
 
+/**
+ * Register and call handler functions responsible for controlling the
+ * IoTivity-lite stack.
+ *
+ * This will initialize the IoTivity-lite stack.
+ *
+ * Before initializing the stack, a few setup functions may need to be called
+ * before calling oc_main_init those functions are:
+ *
+ * - oc_set_con_res_announced()
+ * - oc_set_factory_presets_cb()
+ * - oc_set_max_app_data_size()
+ * - oc_set_random_pin_callback()
+ * - oc_storage_config()
+ *
+ * Not all of the listed functions must be called before calling oc_main_init.
+ *
+ * @param handler struct containing pointers callback handler functions
+ *                responsible for controlling the IoTivity-lite application
+ * @return
+ *  - `0` if stack has been initialized successfully
+ *  - a negative number if there is an error in stack initialization
+ *
+ * @see oc_set_con_res_announced
+ * @see oc_set_factory_presets_cb
+ * @see oc_set_max_app_data_size
+ * @see oc_set_random_pin_callback
+ * @see oc_storage_config
+ */
 int oc_main_init(const oc_handler_t *handler);
 oc_clock_time_t oc_main_poll(void);
+
+/**
+ * Shutdown and free all stack related resources
+ */
 void oc_main_shutdown(void);
 
 typedef void (*oc_factory_presets_cb_t)(size_t device, void *data);
 void oc_set_factory_presets_cb(oc_factory_presets_cb_t cb, void *data);
 
+/**
+ * Add an ocf device to the the stack.
+ *
+ * This function is typically called from as part of the stack initialization
+ * process inside the `init` callback handler.
+ *
+ * The `oc_add_device` function may be called as many times as needed.
+ * Each call will add a new device to the stack with its own port address.
+ * Each device is automatically assigned a number starting with zero and
+ * incremented by one each time the function is called. This number is not
+ * returned therefore it is important to know the order devices are added.
+ *
+ * Example:
+ * ```
+ * //app_init is an instance of the `init` callback handler.
+ * static int app_init(void)
+ * {
+ *   int ret = oc_init_platform("Refrigerator", NULL, NULL);
+ *   ret |= oc_add_device("/oic/d", "oic.d.refrigeration", "My fridge",
+ *                        "ocf.2.0.5", "ocf.res.1.0.0,ocf.sh.1.0.0",
+ *                        NULL, NULL);
+ *   ret |= oc_add_device("/oic/d", "oic.d.thermostat", "My thermostat",
+ *                        "ocf.2.0.5", "ocf.res.1.0.0,ocf.sh.1.0.0",
+ *                        NULL, NULL);
+ *   return ret;
+ * }
+ * ```
+ *
+ * @param uri the The device URI.  The wellknown default URI "/oic/d" is hosted
+ *            by every server. Used to device specific information.
+ * @param rt the resource type
+ * @param name the user readable name of the device
+ * @param spec_version The version of the OCF Server.  This is the "icv" device
+ *                     property
+ * @param data_model_version Spec version of the resource and device
+ * specifications to which this device data model is implemtned. This is the
+ * "dmv" device property
+ * @param add_device_cb callback function that will be invoked once device has
+ *                      been added
+ * @param data context pointer that is passed to the oc_add_device_cb_t
+ *
+ * @return
+ *   - `0` on success
+ *   - `-1` on failure
+ *
+ * @see init
+ */
 int oc_add_device(const char *uri, const char *rt, const char *name,
                   const char *spec_version, const char *data_model_version,
                   oc_add_device_cb_t add_device_cb, void *data);
@@ -84,7 +283,7 @@ typedef void (*oc_random_pin_cb_t)(const unsigned char *pin, size_t pin_len,
 void oc_set_random_pin_callback(oc_random_pin_cb_t cb, void *data);
 
 /**
-  @brief Returns whether the oic.wk.con res is announed.
+  @brief Returns whether the oic.wk.con res is announced.
   @return true if announced (default) or false if not
   @see oc_set_con_res_announced
   @see oc_set_con_write_cb
@@ -102,7 +301,14 @@ void oc_set_con_res_announced(bool announce);
 
 void oc_reset();
 
+void oc_reset_device(size_t device);
+
 /** Server side */
+/**
+  @defgroup doc_module_tag_server_side Server side
+  Optional group of functions OCF server support.
+  @{
+*/
 oc_resource_t *oc_new_resource(const char *name, const char *uri,
                                uint8_t num_resource_types, size_t device);
 void oc_resource_bind_resource_interface(oc_resource_t *resource,
@@ -116,7 +322,7 @@ void oc_device_bind_resource_type(size_t device, const char *type);
 void oc_process_baseline_interface(oc_resource_t *resource);
 
 /**
-  @defgroup oc_collections Collection Support
+  @defgroup doc_module_tag_collections Collection Support
   Optional group of functions to support OCF compliant collections.
   @{
 */
@@ -192,6 +398,15 @@ void oc_delete_link(oc_link_t *link);
 void oc_link_add_rel(oc_link_t *link, const char *rel);
 
 /**
+  @brief Adds a link parameter with specified key and value.
+  @param link Link to which to add a link parameter. Must not be NULL.
+  @param key Key to identify the link parameter. Must not be NULL.
+  @param value Link parameter value. Must not be NULL.
+*/
+void oc_link_add_link_param(oc_link_t *link, const char *key,
+                            const char *value);
+
+/**
   @brief Adds the link to the collection.
   @param collection Collection to add the link to. Must not be NULL.
   @param link Link to add to the collection. The link is not copied.
@@ -230,7 +445,7 @@ oc_link_t *oc_collection_get_links(oc_resource_t *collection);
   @param collection Collection to add to the list of collections.
    Must not be NULL. Must not be added twice or a list corruption
    will occur. The collection is not copied.
-  @see oc_set_discoverable
+  @see oc_resource_set_discoverable
   @see oc_new_collection
 */
 void oc_add_collection(oc_resource_t *collection);
@@ -262,7 +477,7 @@ bool oc_collections_add_rt_factory(const char *rt,
                                    oc_resource_get_instance_t get_instance,
                                    oc_resource_free_instance_t free_instance);
 #endif    /* OC_COLLECTIONS_IF_CREATE */
-/** @} */ // end of oc_collections
+/** @} */ // end of doc_module_tag_collections
 
 void oc_resource_make_public(oc_resource_t *resource);
 
@@ -341,8 +556,13 @@ int oc_notify_observers(oc_resource_t *resource);
 #ifdef __cplusplus
 }
 #endif
+/** @} */ // end of doc_module_tag_server_side
 
-/** Client side */
+/**
+  @defgroup doc_module_tag_client_state Client side
+  Client side support functions
+  @{
+*/
 #include "oc_client_state.h"
 
 #ifdef __cplusplus
@@ -353,12 +573,21 @@ bool oc_do_site_local_ipv6_discovery(const char *rt,
                                      oc_discovery_handler_t handler,
                                      void *user_data);
 
+bool oc_do_site_local_ipv6_discovery_all(oc_discovery_all_handler_t handler,
+                                         void *user_data);
+
 bool oc_do_realm_local_ipv6_discovery(const char *rt,
                                       oc_discovery_handler_t handler,
                                       void *user_data);
 
+bool oc_do_realm_local_ipv6_discovery_all(oc_discovery_all_handler_t handler,
+                                          void *user_data);
+
 bool oc_do_ip_discovery(const char *rt, oc_discovery_handler_t handler,
                         void *user_data);
+
+bool oc_do_ip_discovery_all(oc_discovery_all_handler_t handler,
+                            void *user_data);
 
 /**
   @brief  Discover resources in specific endpoint.
@@ -371,6 +600,10 @@ bool oc_do_ip_discovery(const char *rt, oc_discovery_handler_t handler,
 bool oc_do_ip_discovery_at_endpoint(const char *rt,
                                     oc_discovery_handler_t handler,
                                     oc_endpoint_t *endpoint, void *user_data);
+
+bool oc_do_ip_discovery_all_at_endpoint(oc_discovery_all_handler_t handler,
+                                        oc_endpoint_t *endpoint,
+                                        void *user_data);
 
 bool oc_do_get(const char *uri, oc_endpoint_t *endpoint, const char *query,
                oc_response_handler_t handler, oc_qos_t qos, void *user_data);
@@ -411,7 +644,11 @@ void oc_free_server_endpoints(oc_endpoint_t *endpoint);
 
 void oc_close_session(oc_endpoint_t *endpoint);
 
-/** Asserting roles */
+/**
+  @defgroup doc_module_tag_asserting_roles Asserting roles
+  Asserting roles support functions
+  @{
+*/
 typedef struct oc_role_t
 {
   struct oc_role_t *next;
@@ -428,14 +665,19 @@ void oc_auto_assert_roles(bool auto_assert);
 
 void oc_assert_all_roles(oc_endpoint_t *endpoint, oc_response_handler_t handler,
                          void *user_data);
+/** @} */ // end of doc_module_tag_asserting_roles
 #ifdef OC_TCP
 bool oc_send_ping(bool custody, oc_endpoint_t *endpoint,
                   uint16_t timeout_seconds, oc_response_handler_t handler,
                   void *user_data);
-#endif /* OC_TCP */
+#endif    /* OC_TCP */
+/** @} */ // end of doc_module_tag_client_state
 
-/** Common operations */
-
+/**  */
+/**
+  @defgroup doc_module_tag_common_operations Common operations
+  @{
+*/
 void oc_set_immutable_device_identifier(size_t device, oc_uuid_t *piid);
 
 void oc_set_delayed_callback(void *cb_data, oc_trigger_t callback,
@@ -467,7 +709,7 @@ void oc_remove_delayed_callback(void *cb_data, oc_trigger_t callback);
     OC_PROCESS_END();                                                          \
   }                                                                            \
   void name##_interrupt_x_handler(void)
-
+/** @} */ // end of doc_module_tag_common_operations
 #ifdef __cplusplus
 }
 #endif

@@ -383,8 +383,8 @@ oc_parse_endpoint_string(oc_string_t *endpoint_str, oc_endpoint_t *endpoint,
 
   /* Extract a uri path if requested and available */
   const char *u = NULL;
+  u = memchr(address, '/', len);
   if (uri) {
-    u = memchr(address, '/', len);
     if (u) {
       oc_new_string(uri, u, (len - (u - address)));
     }
@@ -435,7 +435,11 @@ oc_parse_endpoint_string(oc_string_t *endpoint_str, oc_endpoint_t *endpoint,
   if (('A' <= address[address_len - 1] && 'Z' >= address[address_len - 1]) ||
       ('a' <= address[address_len - 1] && 'z' >= address[address_len - 1])) {
 #ifdef OC_DNS_LOOKUP
-    char domain[address_len + 1];
+    if (address_len > 254) {
+      // https://www.rfc-editor.org/rfc/rfc1035.html#section-2.3.4
+      return -1;
+    }
+    char domain[255];
     strncpy(domain, address, address_len);
     domain[address_len] = '\0';
 #ifdef OC_DNS_LOOKUP_IPV6
@@ -557,6 +561,32 @@ oc_endpoint_compare(const oc_endpoint_t *ep1, const oc_endpoint_t *ep2)
 #endif /* OC_IPV4 */
   // TODO: Add support for other endpoint types
   return -1;
+}
+
+void
+oc_endpoint_copy(oc_endpoint_t *dst, oc_endpoint_t *src)
+{
+  if (dst && src) {
+    memcpy(dst, src, sizeof(oc_endpoint_t));
+    dst->next = NULL;
+  }
+}
+
+void
+oc_endpoint_list_copy(oc_endpoint_t **dst, oc_endpoint_t *src)
+{
+  if (dst && src) {
+    oc_endpoint_t *ep = oc_new_endpoint();
+    *dst = ep;
+    while (src && ep) {
+      oc_endpoint_copy(ep, src);
+      src = src->next;
+      if (src) {
+        ep->next = oc_new_endpoint();
+        ep = ep->next;
+      }
+    }
+  }
 }
 
 #ifdef OC_CLIENT

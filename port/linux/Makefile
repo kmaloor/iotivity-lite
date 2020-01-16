@@ -1,16 +1,17 @@
-CC = gcc
+export CC = gcc
 SED = sed
 INSTALL = install
-OS = linux
+export OS = linux
 ROOT_DIR = ../..
+SWIG_DIR = ${ROOT_DIR}/swig
 OUT_DIR = $(ROOT_DIR)/port/$(OS)
 CHECK_SCRIPT = ../../tools/check.py
 VERSION_MAJOR = 1
 VERSION_MINOR = 0
 VERSION = $(VERSION_MAJOR).$(VERSION_MINOR)
 DYNAMIC ?= 1
-SECURE ?= 1
-PKI ?= 1
+export SECURE ?= 1
+export PKI ?= 1
 DESTDIR ?= /usr/local
 install_bin_dir?=${DESTDIR}/opt/iotivity-lite/bin/
 prefix = $(DESTDIR)
@@ -73,7 +74,7 @@ DTLS= 	aes.c		aesni.c 	arc4.c  	asn1parse.c	asn1write.c	base64.c	\
 	pkwrite.c	platform.c	ripemd160.c	rsa.c		sha1.c		sha256.c	\
 	sha512.c	threading.c	timing.c	version.c	version_features.c		\
 	xtea.c  	pkcs11.c 	x509.c 		x509_crt.c	debug.c		net_sockets.c	\
-	ssl_cache.c	ssl_ciphersuites.c		ssl_cli.c	ssl_cookie.c			\
+	ssl_cache.c	ssl_ciphersuites.c		ssl_cli.c	ssl_cookie.c	platform_util.c	\
 	ssl_srv.c	ssl_ticket.c	ssl_tls.c	rsa_internal.c	x509write_csr.c\
 	x509write_crt.c	x509_create.c	x509_csr.c
 DTLSFLAGS=-I../../deps/mbedtls/include -D__OC_RANDOM
@@ -132,7 +133,7 @@ ifeq ($(CLOUD),1)
 	CFLAGS += -DOC_CLOUD
 	TCP=1
 	IPV4=1
-	SAMPLES += cloud_linux cloud_tests
+	SAMPLES += cloud_server cloud_tests
 endif
 
 OBT = onboarding_tool
@@ -153,6 +154,10 @@ endif
 
 ifeq ($(DYNAMIC),1)
 	EXTRA_CFLAGS += -DOC_DYNAMIC_ALLOCATION
+endif
+
+ifeq ($(IDD), 1)
+	EXTRA_CFLAGS += -DOC_IDD_API
 endif
 
 ifeq ($(SWUPDATE),1)
@@ -182,7 +187,9 @@ ifeq ($(TCP),1)
 	EXTRA_CFLAGS += -DOC_TCP
 endif
 
-
+ifeq ($(JAVA),1)
+	SWIG = swig
+endif
 
 CFLAGS += $(EXTRA_CFLAGS)
 CXXFLAGS += $(EXTRA_CFLAGS)
@@ -200,7 +207,7 @@ CONSTRAINED_LIBS = libiotivity-lite-server.a libiotivity-lite-client.a \
 PC = iotivity-lite-client.pc iotivity-lite-server.pc \
      iotivity-lite-client-server.pc
 
-all: $(CONSTRAINED_LIBS) $(SAMPLES) $(PC)
+all: $(CONSTRAINED_LIBS) $(SAMPLES) $(PC) $(SWIG)
 
 test: $(UNIT_TESTS)
 	for test in $^ ; do ./$${test} ; done
@@ -351,9 +358,9 @@ multi_device_client: libiotivity-lite-client.a $(ROOT_DIR)/apps/multi_device_cli
 	@mkdir -p $@_creds
 	${CC} -o $@ ../../apps/multi_device_client_linux.c libiotivity-lite-client.a -DOC_CLIENT ${CFLAGS}  ${LIBS}
 
-cloud_linux: libiotivity-lite-client-server.a $(ROOT_DIR)/apps/cloud_linux.c
+cloud_server: libiotivity-lite-client-server.a $(ROOT_DIR)/apps/cloud_server.c
 	@mkdir -p $@_creds
-	${CC} -o $@ ../../apps/cloud_linux.c libiotivity-lite-client-server.a -DOC_CLIENT -DOC_SERVER ${CFLAGS} ${CFLAGS_CLOUD}  ${LIBS}
+	${CC} -o $@ ../../apps/cloud_server.c libiotivity-lite-client-server.a -DOC_CLIENT -DOC_SERVER ${CFLAGS} ${CFLAGS_CLOUD}  ${LIBS}
 
 cloud_tests: libiotivity-lite-client-server.a $(ROOT_DIR)/apps/cloud_certification_tests.c
 	@mkdir -p $@_creds
@@ -398,6 +405,9 @@ iotivity-lite-client-server.pc: iotivity-lite-client-server.pc.in
 		-e 's,@version@,$(VERSION),' \
 		-e 's,@extra_cflags@,$(EXTRA_CFLAGS),'
 
+swig: $(CONSTRAINED_LIBS) $(OBJ_COMMON) $(OBJ_CLIENT_SERVER) $(OBJ_CLOUD)
+	${MAKE} -C ${SWIG_DIR}
+
 ifneq ($(SECURE),0)
 MBEDTLS_PATCHES ?= $(sort $(wildcard ../../patches/*.patch))
 ${MBEDTLS_DIR}/.git:
@@ -423,6 +433,7 @@ clean:
 cleanall: clean
 	rm -rf ${all} $(SAMPLES) $(TESTS) ${OBT} ${SAMPLES_CREDS} $(MBEDTLS_PATCH_FILE) *.o
 	${MAKE} -C ${GTEST_DIR}/make clean
+	${MAKE} -C ${SWIG_DIR} clean
 
 distclean: cleanall
 
